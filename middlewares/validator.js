@@ -39,7 +39,7 @@ exports.registerSchema = Joi.object({
         "Password must have at least 8 characters, including 1 uppercase letter, 1 lowercase letter, and 1 number",
       "any.required": "Password is required",
     }),
-  referrer: Joi.string().length(42).required().messages({
+  referrer: Joi.string().length(42).messages({
     "any.required": "Referrer address is required",
     "string.length": "Referrer must be a valid 42-character address",
   }),
