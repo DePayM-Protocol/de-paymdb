@@ -39,7 +39,7 @@ exports.registerSchema = Joi.object({
         "Password must have at least 8 characters, including 1 uppercase letter, 1 lowercase letter, and 1 number",
       "any.required": "Password is required",
     }),
-  referrer: Joi.string().length(42).messages({
+  referrer: Joi.string().length(42).required().messages({
     "any.required": "Referrer address is required",
     "string.length": "Referrer must be a valid 42-character address",
   }),
@@ -83,14 +83,6 @@ exports.acceptCodeSchema = Joi.object({
       'string.max': 'Email must be at most 60 characters',
       'any.required': 'Email is required'
     }),
-
-  /*password: Joi.string()
-    .pattern(new RegExp('^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)[A-Za-z\\d@$!%*?&]{8,}$'))
-    .required()
-    .messages({
-      'string.pattern.base': 'Password must have at least 8 characters, including 1 uppercase letter, 1 lowercase letter, and 1 number',
-      'any.required': 'Password is required'
-    }),*/
 
   providedCode: Joi.string()
     .required()
