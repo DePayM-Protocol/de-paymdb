@@ -252,12 +252,7 @@ class MiningController {
       let accumulated = 0;
       let progress = 0;
 
-      if (user.miningSession.isActive) {
-        const elapsed = Date.now() - user.miningSession.startTime;
-        const hours = Math.min(elapsed, MAX_SESSION_DURATION) / 3600000;
-        accumulated = parseFloat(((BASE_HOURLY_RATE + REFERRAL_BONUS * activeRefs) * hours).toFixed(6));
-        progress = Math.min(elapsed / MAX_SESSION_DURATION, 1);
-      }
+      
       
       const now = Date.now();
     let boosterRate     = 0;
@@ -272,6 +267,13 @@ class MiningController {
       REFERRAL_BONUS * activeRefs +
       boosterRate
     ).toFixed(6));
+
+      if (user.miningSession.isActive) {
+        const elapsed = Date.now() - user.miningSession.startTime;
+        const hours = Math.min(elapsed, MAX_SESSION_DURATION) / 3600000;
+        accumulated = parseFloat(((BASE_HOURLY_RATE + REFERRAL_BONUS * activeRefs + boosterRate) * hours).toFixed(6));
+        progress = Math.min(elapsed / MAX_SESSION_DURATION, 1);
+      }
 
     // Get valid function keys (exclude Mongoose internals)
   let validFunctions = [];
