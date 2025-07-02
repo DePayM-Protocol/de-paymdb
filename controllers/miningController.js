@@ -271,7 +271,7 @@ class MiningController {
       if (user.miningSession.isActive) {
         const elapsed = Date.now() - user.miningSession.startTime;
         const hours = Math.min(elapsed, MAX_SESSION_DURATION) / 3600000;
-        accumulated = parseFloat(((BASE_HOURLY_RATE + REFERRAL_BONUS * activeRefs + boosterRate) * hours).toFixed(6));
+        accumulated = parseFloat(((BASE_HOURLY_RATE + REFERRAL_BONUS * activeRefs ) * hours).toFixed(6));
         progress = Math.min(elapsed / MAX_SESSION_DURATION, 1);
       }
 
