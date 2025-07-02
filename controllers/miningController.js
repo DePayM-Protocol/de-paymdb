@@ -3,11 +3,11 @@ const User = require('../models/user');
 
 
 // Mining Constants
-const BASE_HOURLY_RATE = 0.012;
+const BASE_HOURLY_RATE = 0.021;
 const REFERRAL_BONUS = 0.0025;
 const SESSION_COOLDOWN = 4 * 60 * 60 * 1000; // 4 hours
 const MAX_SESSION_DURATION = 4 * 60 * 60 * 1000; // 4 hours
-const BOOST_PER_FUNCTION = 0.005; // 0.1% boost per function type
+const BOOST_PER_FUNCTION = 0.2; // 0.1% boost per function type
 const BOOST_DURATION = 4 * 60 * 60 * 1000; // 4 hours
 
 
