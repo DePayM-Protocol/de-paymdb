@@ -40,8 +40,12 @@ exports.registerSchema = Joi.object({
       "any.required": "Password is required",
     }),
 
+  // validator (validator.js / middlewares/validator.js)
   referrer: Joi.alternatives()
     .try(
+      // allow explicit empty or null
+      Joi.any().valid("", null),
+      // or a valid 0x address
       Joi.string()
         .pattern(/^0x[a-fA-F0-9]{40}$/)
         .messages({
@@ -50,7 +54,6 @@ exports.registerSchema = Joi.object({
         })
     )
     .optional()
-    .allow("", null)
     .messages({
       "alternatives.match": "Invalid referrer value",
     }),
