@@ -1,4 +1,7 @@
 require('dotenv').config();
+console.log("🔹 NODE_ENV:", process.env.NODE_ENV);
+console.log("🔹 MONGO_URI defined?", !!process.env.MONGO_URI);
+console.log("🔹 MONGO_URI first 30 chars:", process.env.MONGO_URI ? process.env.MONGO_URI.slice(0, 30) : "undefined");
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
