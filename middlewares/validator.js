@@ -41,22 +41,16 @@ exports.registerSchema = Joi.object({
     }),
 
   // validator (validator.js / middlewares/validator.js)
-  referrer: Joi.alternatives()
-    .try(
-      // allow explicit empty or null
-      Joi.any().valid("", null),
-      // or a valid 0x address
-      Joi.string()
-        .pattern(/^0x[a-fA-F0-9]{40}$/)
-        .messages({
-          "string.pattern.base":
-            "Referrer must be a valid 42-character Ethereum address starting with 0x",
-        })
-    )
-    .optional()
-    .messages({
-      "alternatives.match": "Invalid referrer value",
-    }),
+  referrer: Joi.string()
+  .pattern(/^0x[a-fA-F0-9]{40}$/)
+  .messages({
+    "string.pattern.base":
+      "Referrer must be a valid 42-character Ethereum address starting with 0x",
+  })
+  .allow(null)     // allow null explicitly
+  .allow("")       // allow empty string explicitly
+  .optional()      // allow the field to be omitted entirely
+
 });
 
 exports.loginSchema = Joi.object({
