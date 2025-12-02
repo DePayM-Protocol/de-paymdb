@@ -38,13 +38,12 @@ function generateVerificationCode() {
 
 
 exports.register = async (req, res) => {
-  // prefer body.referrer and fall back to query ref
+  // prefer body.referrer then query param 'ref'
   let { email, username, password, referrer } = req.body;
   const { ref } = req.query;
-
   if (!referrer && ref) referrer = ref;
 
-  // Normalize referrer so Joi receives either a proper string or undefined
+  // Normalize referrer BEFORE validation:
   if (typeof referrer === 'string') {
     referrer = referrer.trim();
     if (
@@ -58,18 +57,25 @@ exports.register = async (req, res) => {
     referrer = undefined;
   }
 
+  // Build payload WITHOUT referrer so schema won't complain about it
+  const payloadForValidation = { email, username, password };
+
+  // Debugging (remove in production if you want)
+  console.log('Register payload (for validation):', {
+    email,
+    username,
+    password: password ? '***' : undefined,
+    referrerProvided: !!referrer,
+    referrerValue: referrer ? (referrer.length > 10 ? referrer.slice(0, 10) + '...' : referrer) : undefined
+  });
+
   try {
-    // Validate input with normalized referrer
-    const { error } = registerSchema.validate({
-      email,
-      username,
-      password,
-      referrer,
-    });
+    // Validate required fields (note: referrer purposely excluded)
+    const { error } = registerSchema.validate(payloadForValidation);
     if (error) {
       return res.status(400).json({
         success: false,
-        message: error.details[0]?.message.replace(/["]/g, ''),
+        message: error.details[0]?.message.replace(/["]/g, ""),
       });
     }
 
@@ -78,7 +84,7 @@ exports.register = async (req, res) => {
     if (existingUserByEmail) {
       return res.status(400).json({
         success: false,
-        message: 'User already exists with this email!',
+        message: "User already exists with this email!",
       });
     }
 
@@ -87,38 +93,33 @@ exports.register = async (req, res) => {
     if (existingUserByUsername) {
       return res.status(400).json({
         success: false,
-        message: 'Username is already taken!',
+        message: "Username is already taken!",
       });
     }
 
     // Hash the password
     const hashedPassword = await doHash(password, 12);
 
-    // Create new user object (not yet saved)
+    // Create new user with optional referral
     const newUser = new User({
       email,
       username,
       password: hashedPassword,
     });
 
-    // If a referrer was provided, only apply it when it's a valid 0x address and maps to a user.
+    // Apply referral only if referrer is defined and valid 0x address
     if (referrer) {
-      // ensure correct format before DB lookup
       const is0x = /^0x[a-fA-F0-9]{40}$/.test(referrer);
       if (!is0x) {
         console.warn('Referrer provided but invalid format — ignoring:', referrer);
       } else {
         const referringUser = await User.findOne({
-          'wallets.address': referrer.toLowerCase(),
+          'wallets.address': referrer.toLowerCase()
         });
-
         if (!referringUser) {
-          // Friendly UX: don't block registration if referrer not found
           console.warn('Referrer address not found in DB — continuing without referral:', referrer);
         } else {
-          // Apply referral relationship
           newUser.referredBy = referringUser._id;
-          // push newUser._id (Mongoose generates it before save)
           referringUser.referrals.push(newUser._id);
           referringUser.ratePerHour = parseFloat(
             (referringUser.ratePerHour + REFERRAL_BONUS).toFixed(6)
@@ -128,22 +129,22 @@ exports.register = async (req, res) => {
       }
     }
 
-    // Save new user
     const result = await newUser.save();
 
-    // Remove sensitive data before returning
+    // Remove sensitive data before sending response
     const { password: _, ...safeUser } = result.toObject();
 
     return res.status(201).json({
       success: true,
-      message: 'Your account has been created successfully',
+      message: "Your account has been created successfully",
       result: safeUser,
     });
+
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error("Registration error:", error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error. Please try again later.',
+      message: "Internal server error. Please try again later.",
     });
   }
 };
