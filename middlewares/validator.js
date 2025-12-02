@@ -40,7 +40,7 @@ exports.registerSchema = Joi.object({
       "any.required": "Password is required",
     }),
 
- /* // validator (validator.js / middlewares/validator.js)
+  // validator (validator.js / middlewares/validator.js)
   referrer: Joi.string()
   .pattern(/^0x[a-fA-F0-9]{40}$/)
   .messages({
@@ -50,7 +50,7 @@ exports.registerSchema = Joi.object({
   .allow(null)     // allow null explicitly
   .allow("")       // allow empty string explicitly
   .optional()      // allow the field to be omitted entirely
-*/
+
 });
 
 exports.loginSchema = Joi.object({

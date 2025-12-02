@@ -49,6 +49,24 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// --- DEBUG: trace incoming auth requests (TEMPORARY — remove after debugging) ---
+app.use((req, res, next) => {
+  if (req.path && req.path.startsWith('/api/auth')) {
+    try {
+      console.log('▶ Incoming HTTP', req.method, req.path, 'host:', req.headers.host, 'origin:', req.headers.origin, 'x-forwarded-for:', req.headers['x-forwarded-for']);
+      // safe body preview (mask password)
+      const preview = Object.assign({}, req.body || {});
+      if (preview.password) preview.password = '***';
+      if (preview.confirmPassword) preview.confirmPassword = '***';
+      console.log('  body preview:', preview);
+    } catch (e) {
+      console.log('  request trace error:', e && e.message);
+    }
+  }
+  next();
+});
+
+
 // Database Connection
 mongoose.connect(process.env.MONGO_URI, {
   serverSelectionTimeoutMS: 5000,
