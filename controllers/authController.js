@@ -38,16 +38,38 @@ function generateVerificationCode() {
 
 
 exports.register = async (req, res) => {
-  const { email, username, password, referrer } = req.body;
+  // prefer body.referrer and fall back to query ref
+  let { email, username, password, referrer } = req.body;
   const { ref } = req.query;
 
+  if (!referrer && ref) referrer = ref;
+
+  // Normalize referrer so Joi receives either a proper string or undefined
+  if (typeof referrer === 'string') {
+    referrer = referrer.trim();
+    if (
+      referrer === '' ||
+      referrer.toLowerCase() === 'null' ||
+      referrer.toLowerCase() === 'undefined'
+    ) {
+      referrer = undefined;
+    }
+  } else if (referrer === null) {
+    referrer = undefined;
+  }
+
   try {
-    // Validate input
-    const { error } = registerSchema.validate({ email, username, password, referrer });
+    // Validate input with normalized referrer
+    const { error } = registerSchema.validate({
+      email,
+      username,
+      password,
+      referrer,
+    });
     if (error) {
       return res.status(400).json({
         success: false,
-        message: error.details[0]?.message.replace(/["]/g, ""),
+        message: error.details[0]?.message.replace(/["]/g, ''),
       });
     }
 
@@ -56,7 +78,7 @@ exports.register = async (req, res) => {
     if (existingUserByEmail) {
       return res.status(400).json({
         success: false,
-        message: "User already exists with this email!",
+        message: 'User already exists with this email!',
       });
     }
 
@@ -65,60 +87,67 @@ exports.register = async (req, res) => {
     if (existingUserByUsername) {
       return res.status(400).json({
         success: false,
-        message: "Username is already taken!",
+        message: 'Username is already taken!',
       });
     }
 
     // Hash the password
     const hashedPassword = await doHash(password, 12);
 
-    // Create new user with optional referral
+    // Create new user object (not yet saved)
     const newUser = new User({
       email,
       username,
       password: hashedPassword,
     });
 
-    // 3) If there's a referrer code/address, apply the referral
+    // If a referrer was provided, only apply it when it's a valid 0x address and maps to a user.
     if (referrer) {
-      const referringUser = await User.findOne({
-        'wallets.address': referrer.toLowerCase()
-      });
-      if (!referringUser) {
-        return res.status(400).json({
-          success: false,
-          message: "Referrer does not exist or is not registered!",
+      // ensure correct format before DB lookup
+      const is0x = /^0x[a-fA-F0-9]{40}$/.test(referrer);
+      if (!is0x) {
+        console.warn('Referrer provided but invalid format — ignoring:', referrer);
+      } else {
+        const referringUser = await User.findOne({
+          'wallets.address': referrer.toLowerCase(),
         });
-      }
-      if (referringUser) {
-        newUser.referredBy = referringUser._id;
-        referringUser.referrals.push(newUser._id);
-        referringUser.ratePerHour = parseFloat(
-          (referringUser.ratePerHour + REFERRAL_BONUS).toFixed(6)
-        );
-        await referringUser.save();
+
+        if (!referringUser) {
+          // Friendly UX: don't block registration if referrer not found
+          console.warn('Referrer address not found in DB — continuing without referral:', referrer);
+        } else {
+          // Apply referral relationship
+          newUser.referredBy = referringUser._id;
+          // push newUser._id (Mongoose generates it before save)
+          referringUser.referrals.push(newUser._id);
+          referringUser.ratePerHour = parseFloat(
+            (referringUser.ratePerHour + REFERRAL_BONUS).toFixed(6)
+          );
+          await referringUser.save();
+        }
       }
     }
-    
+
+    // Save new user
     const result = await newUser.save();
 
-    // Remove sensitive data before sending response
+    // Remove sensitive data before returning
     const { password: _, ...safeUser } = result.toObject();
 
     return res.status(201).json({
       success: true,
-      message: "Your account has been created successfully",
+      message: 'Your account has been created successfully',
       result: safeUser,
     });
-
   } catch (error) {
-    console.error("Registration error:", error);
+    console.error('Registration error:', error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error. Please try again later.",
+      message: 'Internal server error. Please try again later.',
     });
   }
 };
+
 
 
 
