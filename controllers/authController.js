@@ -38,6 +38,8 @@ function generateVerificationCode() {
 
 
 exports.register = async (req, res) => {
+  console.log("🟢 Register route called. Request body:", req.body);
+
   // prefer body.referrer then query param 'ref'
   let { email, username, password, referrer } = req.body;
   const { ref } = req.query;
