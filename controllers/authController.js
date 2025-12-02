@@ -203,7 +203,7 @@ exports.login = async (req, res) => {
         message: 'Invalid credentials!'
       });
     }
-
+/*
     const token = jwt.sign(
       { 
         userId: existingUser._id,
@@ -231,6 +231,34 @@ exports.login = async (req, res) => {
       user: userData,
       message: 'Logged in successfully',
     });
+*/
+    // 1 year in seconds and ms
+const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;        // 31536000
+const ONE_YEAR_MS = ONE_YEAR_SECONDS * 1000;        // 31536000000
+
+const token = jwt.sign(
+  { 
+    userId: existingUser._id,
+    email: existingUser.email,
+    verified: existingUser.verified,
+  },
+  process.env.TOKEN_SECRET,
+  { expiresIn: ONE_YEAR_SECONDS } // expiresIn accepts seconds or string like '1y'
+);
+
+// set cookie to expire in 1 year as well
+res.cookie('Authorisation', 'Bearer ' + token, {
+  expires: new Date(Date.now() + ONE_YEAR_MS),
+  httpOnly: process.env.NODE_ENV === 'production',
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax'
+}).json({
+  success: true,
+  token,
+  user: userData,
+  message: 'Logged in successfully',
+});
+
     
 
   } catch (error) {
