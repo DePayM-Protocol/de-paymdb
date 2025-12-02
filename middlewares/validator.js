@@ -39,14 +39,18 @@ exports.registerSchema = Joi.object({
         "Password must have at least 8 characters, including 1 uppercase letter, 1 lowercase letter, and 1 number",
       "any.required": "Password is required",
     }),
-  referrer: Joi.alternatives().try(
-  Joi.string().valid('', null), // allow empty / null
+  
+    referrer: Joi.alternatives().try(
+  // allow exactly empty string or null (and nothing else)
+  Joi.any().valid('', null),
+  // OR a valid 0x 42-char hex address
   Joi.string().pattern(/^0x[a-fA-F0-9]{40}$/).messages({
     'string.pattern.base': 'Referrer must be a valid 42-character Ethereum address starting with 0x'
   })
 ).messages({
   'alternatives.match': 'Invalid referrer value'
 }),
+
 });
 
 exports.loginSchema = Joi.object({
