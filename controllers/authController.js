@@ -246,6 +246,13 @@ const token = jwt.sign(
   { expiresIn: ONE_YEAR_SECONDS } // expiresIn accepts seconds or string like '1y'
 );
 
+const userData = {
+      _id: existingUser._id,
+      email: existingUser.email,
+      verified: existingUser.verified,
+      // Add other non-sensitive fields if needed
+    };
+
 // set cookie to expire in 1 year as well
 res.cookie('Authorisation', 'Bearer ' + token, {
   expires: new Date(Date.now() + ONE_YEAR_MS),
