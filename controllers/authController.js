@@ -71,7 +71,22 @@ exports.register = async (req, res) => {
 
   try {
     // Validate required fields (note: referrer purposely excluded)
-    const { error } = registerSchema.validate(payloadForValidation);
+    const { error, value } = registerSchema.validate(payloadForValidation, { abortEarly: false, allowUnknown: true });
+
+if (error) {
+  console.log("🛑 Joi validation failed:");
+  error.details.forEach((detail, idx) => {
+    console.log(`${idx + 1}. ${detail.message} (path: ${detail.path.join('.')}, type: ${detail.type}, value: ${detail.context.value})`);
+  });
+  return res.status(400).json({
+    status: "error",
+    message: "Validation failed",
+    details: error.details.map(d => d.message),
+  });
+}
+
+console.log("✅ Joi validation passed. Payload after validation:", value);
+
     if (error) {
       return res.status(400).json({
         success: false,
