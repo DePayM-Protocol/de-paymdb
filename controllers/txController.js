@@ -190,17 +190,17 @@ module.exports = {
         sender: sender.toLowerCase(),
         receiver: recipient.toLowerCase(),
         token: currency,
-        amount: amount * (10 ** (token_decimals || 6)),
+        amount: amount.toString(),
         blockNumber: "pending", 
         timestamp: timestamp ? new Date(timestamp) : new Date(),
         network: network,
         status: 'confirmed',
-        function_name: function_name || 'pay',
+        function_name: function_name, // 'pay', 'withdrawal', 'deposit',
         direction: direction,
         displayType: displayType,
         token_decimals: token_decimals || 6,
         token_symbol: token_symbol || 'USDC',
-        fee: fee || '0',
+        fee: fee?.toString() || '0',
         contractAddress: contractAddress || networkConfig.networks[network].contractAddress
       });
   
