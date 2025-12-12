@@ -147,7 +147,7 @@ module.exports = {
 
       const enhancedTx = transactions.map((tx) => {
         const isSender = tx.sender.toLowerCase() === address;
-       // const isReceiver = tx.receiver.toLowerCase() === address;
+        // const isReceiver = tx.receiver.toLowerCase() === address;
         const func = tx.function_name.toLowerCase();
 
         let displayType, direction;
@@ -170,9 +170,12 @@ module.exports = {
           ...tx._doc,
           direction,
           displayType,
-          amount: ethers.formatUnits(tx.amount, tx.token_decimals || 6),
+          amount: ethers.formatUnits(
+            tx.amount?.toString() || "0",
+            tx.token_decimals || 6
+          ),
           fee: tx.fee
-            ? ethers.formatUnits(tx.fee, tx.token_decimals || 6)
+            ? ethers.formatUnits(tx.fee.toString(), tx.token_decimals || 6)
             : "0",
         };
       });
