@@ -1,50 +1,63 @@
-const { ethers } = require('ethers');
-const Transaction = require('../models/transactions');
-const User = require('../models/user');
-const MiningController = require('./miningController');
-const networkConfig = require('../config/networks');
+const { ethers } = require("ethers");
+const Transaction = require("../models/transactions");
+const User = require("../models/user");
+const MiningController = require("./miningController");
+const networkConfig = require("../config/networks");
 const { getNetworkConfig } = networkConfig;
 
 // Main indexing function
 async function indexNewTransactions() {
   try {
     const results = [];
-    
-    for (const [networkName, config] of Object.entries(networkConfig.networks)) {
+
+    for (const [networkName, config] of Object.entries(
+      networkConfig.networks
+    )) {
       try {
         const provider = new ethers.JsonRpcProvider(config.rpcUrl);
-        const contract = new ethers.Contract(config.contractAddress, DEPAYM_ABI, provider);
-        
+        const contract = new ethers.Contract(
+          config.contractAddress,
+          DEPAYM_ABI,
+          provider
+        );
+
         // Get latest processed block for this network
-        const lastBlock = await Transaction.findOne({ network: networkName }).sort({ blockNumber: -1 });
+        const lastBlock = await Transaction.findOne({
+          network: networkName,
+        }).sort({ blockNumber: -1 });
         const fromBlock = lastBlock ? lastBlock.blockNumber + 1 : 0;
         const toBlock = await provider.getBlockNumber();
-        
+
         if (fromBlock > toBlock) continue;
 
-        const events = await contract.queryFilter('*', fromBlock, toBlock);
-        
+        const events = await contract.queryFilter("*", fromBlock, toBlock);
+
         for (const event of events) {
-          await processEvent(event, provider, networkName, config.contractAddress);
+          await processEvent(
+            event,
+            provider,
+            networkName,
+            config.contractAddress
+          );
         }
-        
+
         results.push({
           network: networkName,
           blocksProcessed: toBlock - fromBlock + 1,
-          transactionsAdded: events.length
+          transactionsAdded: events.length,
         });
       } catch (error) {
         console.error(`Indexing error on ${networkName}:`, error);
         results.push({
           network: networkName,
-          error: error.message
+          error: error.message,
         });
       }
     }
-    
+
     return { success: true, results };
   } catch (error) {
-    console.error('Global indexing error:', error);
+    console.error("Global indexing error:", error);
     return { success: false, error: error.message };
   }
 }
@@ -52,63 +65,79 @@ async function indexNewTransactions() {
 // Process individual event
 async function processEvent(event, provider, networkName, contractAddress) {
   const txHash = event.transactionHash;
-  
+
   // Skip if already exists
-  if (await Transaction.exists({ transaction_hash: txHash, network: networkName })) return;
+  if (
+    await Transaction.exists({ transaction_hash: txHash, network: networkName })
+  )
+    return;
 
   const receipt = await provider.getTransactionReceipt(txHash);
   const block = await provider.getBlock(receipt.blockNumber);
-  
+
   // Get token config
   const tokenAddress = event.args.token;
-  const tokenConfig = Object.values(networkConfig.networks[networkName].tokens)
-    .find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
-  
+  const tokenConfig = Object.values(
+    networkConfig.networks[networkName].tokens
+  ).find((t) => t.address.toLowerCase() === tokenAddress.toLowerCase());
+
   const baseTx = {
     transaction_hash: txHash,
     blockNumber: receipt.blockNumber,
     contractAddress,
-    status: receipt.status === 1 ? 'confirmed' : 'failed',
+    status: receipt.status === 1 ? "confirmed" : "failed",
     timestamp: new Date(block.timestamp * 1000),
     network: networkName,
     token: tokenAddress,
     token_decimals: tokenConfig?.decimals || 6,
-    token_symbol: Object.keys(networkConfig.networks[networkName].tokens)
-      .find(key => networkConfig.networks[networkName].tokens[key].address === tokenAddress) || 'UNKNOWN'
+    token_symbol:
+      Object.keys(networkConfig.networks[networkName].tokens).find(
+        (key) =>
+          networkConfig.networks[networkName].tokens[key].address ===
+          tokenAddress
+      ) || "UNKNOWN",
   };
 
   // Event-specific processing
-  switch(event.eventName) {
-    case 'PaymentExecuted':
+  switch (event.eventName) {
+    case "PaymentExecuted":
       await new Transaction({
         ...baseTx,
-        function_name: 'Pay',
+        function_name: "Pay",
         sender: event.args.user,
         receiver: event.args.receiver,
         amount: event.args.receiverAmount.toString(),
-        fee: event.args.tierFee.toString()
+        fee: event.args.tierFee.toString(),
       }).save();
       break;
 
-    case 'WithdrawalExecuted':
+    case "WithdrawalExecuted":
       await new Transaction({
         ...baseTx,
-        function_name: 'Withdrawal',
+        function_name: "Withdrawal",
         sender: event.args.user,
         receiver: event.args.receiver,
         amount: event.args.receiverAmount.toString(),
-        fee: (BigInt(event.args.tierFee) + BigInt(event.args.withdrawFee)).toString()
+        fee: (
+          BigInt(event.args.tierFee) + BigInt(event.args.withdrawFee)
+        ).toString(),
       }).save();
       break;
 
-    case 'DepositExecuted':
+    case "DepositExecuted":
       await new Transaction({
         ...baseTx,
-        function_name: 'Deposit',
+        function_name: "Deposit",
         sender: event.args.onRamp,
         receiver: event.args.user,
-        amount: (BigInt(event.args.amount) - BigInt(event.args.tierFee) - BigInt(event.args.onRampFee)).toString(),
-        fee: (BigInt(event.args.tierFee) + BigInt(event.args.onRampFee)).toString()
+        amount: (
+          BigInt(event.args.amount) -
+          BigInt(event.args.tierFee) -
+          BigInt(event.args.onRampFee)
+        ).toString(),
+        fee: (
+          BigInt(event.args.tierFee) + BigInt(event.args.onRampFee)
+        ).toString(),
       }).save();
       break;
   }
@@ -145,13 +174,15 @@ module.exports = {
         };
       });*/
 
+      // put near the top of file if not already
+      const { ethers } = require("ethers");
+
+      // ... inside getTransactions, after fetching `transactions`:
       const enhancedTx = transactions.map((tx) => {
-        const isSender = tx.sender.toLowerCase() === address;
-        // const isReceiver = tx.receiver.toLowerCase() === address;
-        const func = tx.function_name.toLowerCase();
+        const isSender = (tx.sender || "").toLowerCase() === address;
+        const func = (tx.function_name || "").toLowerCase();
 
         let displayType, direction;
-
         if (func === "pay") {
           displayType = "payment";
           direction = isSender ? "out" : "in";
@@ -162,21 +193,81 @@ module.exports = {
           displayType = "withdrawal";
           direction = isSender ? "out" : "in";
         } else {
-          displayType = func;
+          displayType = func || "unknown";
           direction = isSender ? "out" : "in";
         }
+
+        const decimals = Number(tx.token_decimals || 6);
+
+        // helper: safeFormatUnits accepts many input shapes and returns a string
+        const safeFormatUnits = (value, decimals) => {
+          try {
+            if (value === null || value === undefined || value === "")
+              return "0";
+            // if it's already a BigInt or numeric string of integer base-units, format directly
+            if (typeof value === "bigint") {
+              return ethers.formatUnits(value, decimals);
+            }
+            if (typeof value === "string") {
+              // if string looks like an integer (no dot, only digits), feed directly
+              if (/^-?\d+$/.test(value)) {
+                return ethers.formatUnits(value, decimals);
+              }
+              // if string looks decimal (has dot), try parseUnits to get integer base units then format
+              if (/^-?\d+\.\d+$/.test(value)) {
+                try {
+                  const parsed = ethers.parseUnits(value, decimals); // returns BigInt
+                  return ethers.formatUnits(parsed, decimals);
+                } catch (e) {
+                  // parseUnits may fail for malformed strings; fall through
+                  console.warn(
+                    "safeFormatUnits.parseUnits failed:",
+                    e?.message ?? e
+                  );
+                }
+              }
+              // fallback: try formatUnits with the string anyway (may throw)
+              return ethers.formatUnits(value, decimals);
+            }
+            if (typeof value === "number") {
+              // numbers are dangerous due to float precision; convert to string then parseUnits
+              const s = String(value);
+              if (s.indexOf(".") >= 0) {
+                const parsed = ethers.parseUnits(s, decimals);
+                return ethers.formatUnits(parsed, decimals);
+              } else {
+                return ethers.formatUnits(s, decimals);
+              }
+            }
+            // fallback: toString and try
+            return ethers.formatUnits(String(value), decimals);
+          } catch (err) {
+            console.error(
+              "safeFormatUnits - could not format value:",
+              value,
+              "decimals:",
+              decimals,
+              "error:",
+              err?.message ?? err
+            );
+            // Last-resort fallback: return the raw string form
+            try {
+              return String(value);
+            } catch (e) {
+              return "0";
+            }
+          }
+        };
+
+        let amountHuman = safeFormatUnits(tx.amount, decimals);
+        let feeHuman = tx.fee ? safeFormatUnits(tx.fee, decimals) : "0";
 
         return {
           ...tx._doc,
           direction,
           displayType,
-          amount: ethers.formatUnits(
-            tx.amount?.toString() || "0",
-            tx.token_decimals || 6
-          ),
-          fee: tx.fee
-            ? ethers.formatUnits(tx.fee.toString(), tx.token_decimals || 6)
-            : "0",
+          amount: amountHuman,
+          fee: feeHuman,
         };
       });
 
@@ -219,45 +310,45 @@ module.exports = {
 
       // Validate network
       // Resolve network (accepts display name, alias like "base_sepolia", or numeric chainId)
-const rawNetworkInput = network || req.body.network_display_name || req.body.chainId;
-const resolved = getNetworkConfig(rawNetworkInput);
+      const rawNetworkInput =
+        network || req.body.network_display_name || req.body.chainId;
+      const resolved = getNetworkConfig(rawNetworkInput);
 
-if (!resolved) {
-  return res.status(400).json({ error: "Unsupported network" });
-}
+      if (!resolved) {
+        return res.status(400).json({ error: "Unsupported network" });
+      }
 
-const { displayName: canonicalNetworkName, config: netCfg } = resolved;
+      const { displayName: canonicalNetworkName, config: netCfg } = resolved;
 
-// Validate token exists on this resolved network
-const tokenKey = (currency || "").toUpperCase();
-if (!netCfg.tokens || !netCfg.tokens[tokenKey]) {
-  return res.status(400).json({ error: "Unsupported token" });
-}
+      // Validate token exists on this resolved network
+      const tokenKey = (currency || "").toUpperCase();
+      if (!netCfg.tokens || !netCfg.tokens[tokenKey]) {
+        return res.status(400).json({ error: "Unsupported token" });
+      }
 
-// Build the transaction record and persist both forms: network_key (raw input) and canonical display name
-const newTx = new Transaction({
-  transaction_hash: txHash,
-  sender: sender.toLowerCase(),
-  receiver: recipient.toLowerCase(),
-  token: tokenKey,
-  token_address: netCfg.tokens[tokenKey].address,
-  amount: amount.toString(),
-  blockNumber: "pending",
-  timestamp: timestamp ? new Date(timestamp) : new Date(),
-  network_key: String(rawNetworkInput),                // the exact client-provided value
-  network: canonicalNetworkName,                       // canonical display name you already use
-  chainId: netCfg.chainId,                             // numeric chainId
-  status: "confirmed",
-  function_name: function_name,
-  direction: direction,
-  displayType: displayType,
-  token_decimals: token_decimals || netCfg.tokens[tokenKey].decimals || 6,
-  token_symbol: token_symbol || tokenKey,
-  fee: fee?.toString() || "0",
-  contractAddress: contractAddress || netCfg.contractAddress,
-  raw_payload: req.body, // optional, useful for auditing
-});
-
+      // Build the transaction record and persist both forms: network_key (raw input) and canonical display name
+      const newTx = new Transaction({
+        transaction_hash: txHash,
+        sender: sender.toLowerCase(),
+        receiver: recipient.toLowerCase(),
+        token: tokenKey,
+        token_address: netCfg.tokens[tokenKey].address,
+        amount: amount.toString(),
+        blockNumber: "pending",
+        timestamp: timestamp ? new Date(timestamp) : new Date(),
+        network_key: String(rawNetworkInput), // the exact client-provided value
+        network: canonicalNetworkName, // canonical display name you already use
+        chainId: netCfg.chainId, // numeric chainId
+        status: "confirmed",
+        function_name: function_name,
+        direction: direction,
+        displayType: displayType,
+        token_decimals: token_decimals || netCfg.tokens[tokenKey].decimals || 6,
+        token_symbol: token_symbol || tokenKey,
+        fee: fee?.toString() || "0",
+        contractAddress: contractAddress || netCfg.contractAddress,
+        raw_payload: req.body, // optional, useful for auditing
+      });
 
       await newTx.save();
 
@@ -299,4 +390,3 @@ const newTx = new Transaction({
   },
   indexNewTransactions,
 };
-
