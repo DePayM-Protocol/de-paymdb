@@ -3,6 +3,7 @@ const Transaction = require('../models/transactions');
 const User = require('../models/user');
 const MiningController = require('./miningController');
 const networkConfig = require('../config/networks');
+const { getNetworkConfig } = networkConfig;
 
 // Main indexing function
 async function indexNewTransactions() {
@@ -214,29 +215,46 @@ module.exports = {
         : "payment";
 
       // Validate network
-      if (!networkConfig.networks[network]) {
-        return res.status(400).json({ error: "Unsupported network" });
-      }
+      // Resolve network (accepts display name, alias like "base_sepolia", or numeric chainId)
+const rawNetworkInput = network || req.body.network_display_name || req.body.chainId;
+const resolved = getNetworkConfig(rawNetworkInput);
 
-      const newTx = new Transaction({
-        transaction_hash: txHash,
-        sender: sender.toLowerCase(),
-        receiver: recipient.toLowerCase(),
-        token: currency,
-        amount: amount.toString(),
-        blockNumber: "pending",
-        timestamp: timestamp ? new Date(timestamp) : new Date(),
-        network: network,
-        status: "confirmed",
-        function_name: function_name, // 'pay', 'withdrawal', 'deposit',
-        direction: direction,
-        displayType: displayType,
-        token_decimals: token_decimals || 6,
-        token_symbol: token_symbol || "USDC",
-        fee: fee?.toString() || "0",
-        contractAddress:
-          contractAddress || networkConfig.networks[network].contractAddress,
-      });
+if (!resolved) {
+  return res.status(400).json({ error: "Unsupported network" });
+}
+
+const { displayName: canonicalNetworkName, config: netCfg } = resolved;
+
+// Validate token exists on this resolved network
+const tokenKey = (currency || "").toUpperCase();
+if (!netCfg.tokens || !netCfg.tokens[tokenKey]) {
+  return res.status(400).json({ error: "Unsupported token" });
+}
+
+// Build the transaction record and persist both forms: network_key (raw input) and canonical display name
+const newTx = new Transaction({
+  transaction_hash: txHash,
+  sender: sender.toLowerCase(),
+  receiver: recipient.toLowerCase(),
+  token: tokenKey,
+  token_address: netCfg.tokens[tokenKey].address,
+  amount: amount.toString(),
+  blockNumber: "pending",
+  timestamp: timestamp ? new Date(timestamp) : new Date(),
+  network_key: String(rawNetworkInput),                // the exact client-provided value
+  network: canonicalNetworkName,                       // canonical display name you already use
+  chainId: netCfg.chainId,                             // numeric chainId
+  status: "confirmed",
+  function_name: function_name,
+  direction: direction,
+  displayType: displayType,
+  token_decimals: token_decimals || netCfg.tokens[tokenKey].decimals || 6,
+  token_symbol: token_symbol || tokenKey,
+  fee: fee?.toString() || "0",
+  contractAddress: contractAddress || netCfg.contractAddress,
+  raw_payload: req.body, // optional, useful for auditing
+});
+
 
       await newTx.save();
 
