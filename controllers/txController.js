@@ -117,22 +117,19 @@ module.exports = {
   getTransactions: async (req, res) => {
     try {
       const address = req.query.address?.toLowerCase();
-      
+
       if (!ethers.isAddress(address)) {
-        return res.status(400).json({ error: 'Invalid wallet address' });
+        return res.status(400).json({ error: "Invalid wallet address" });
       }
 
       const transactions = await Transaction.find({
-        $or: [
-          { sender: address },
-          { receiver: address }
-        ]
+        $or: [{ sender: address }, { receiver: address }],
       })
-      .sort({ timestamp: -1 })
-      .limit(100);
+        .sort({ timestamp: -1 })
+        .limit(100);
 
       // Enhance transactions with direction and display type
-      const enhancedTx = transactions.map(tx => {
+      /* const enhancedTx = transactions.map(tx => {
         const isSender = tx.sender === address;
         const isReceiver = tx.receiver === address;
         
@@ -145,98 +142,140 @@ module.exports = {
           amount: ethers.formatUnits(tx.amount, tx.token_decimals || 6),
           fee: tx.fee ? ethers.formatUnits(tx.fee, tx.token_decimals || 6) : '0'
         };
+      });*/
+
+      const enhancedTx = transactions.map((tx) => {
+        const isSender = tx.sender.toLowerCase() === address;
+       // const isReceiver = tx.receiver.toLowerCase() === address;
+        const func = tx.function_name.toLowerCase();
+
+        let displayType, direction;
+
+        if (func === "pay") {
+          displayType = "payment";
+          direction = isSender ? "out" : "in";
+        } else if (func === "deposit") {
+          displayType = "deposit";
+          direction = isSender ? "out" : "in";
+        } else if (func === "withdraw" || func === "withdrawal") {
+          displayType = "withdrawal";
+          direction = isSender ? "out" : "in";
+        } else {
+          displayType = func;
+          direction = isSender ? "out" : "in";
+        }
+
+        return {
+          ...tx._doc,
+          direction,
+          displayType,
+          amount: ethers.formatUnits(tx.amount, tx.token_decimals || 6),
+          fee: tx.fee
+            ? ethers.formatUnits(tx.fee, tx.token_decimals || 6)
+            : "0",
+        };
       });
-      
+
       res.json(enhancedTx);
-      
     } catch (error) {
-      console.error('Error fetching transactions:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      console.error("Error fetching transactions:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   },
 
   notifyTransaction: async (req, res) => {
     try {
-      const { 
-        txHash, 
-        sender, 
-        recipient, 
-        amount, 
-        currency, 
+      const {
+        txHash,
+        sender,
+        recipient,
+        amount,
+        currency,
         network,
         function_name,
         token_decimals,
         token_symbol,
         fee,
         timestamp,
-        contractAddress
+        contractAddress,
       } = req.body;
-  
-      const isDeposit = function_name.toLowerCase() === 'deposit';
-      const direction = isDeposit ? 'in' : 
-                       (sender === recipient ? 'out' : 
-                       (req.body.direction || 'in'));
-      
-      const displayType = isDeposit ? 'deposit' : 
-                         (function_name.toLowerCase() === 'withdrawal' ? 'withdrawal' : 'payment');
-  
+
+      const isDeposit = function_name.toLowerCase() === "deposit";
+      const direction = isDeposit
+        ? "in"
+        : sender === recipient
+        ? "out"
+        : req.body.direction || "in";
+
+      const displayType = isDeposit
+        ? "deposit"
+        : function_name.toLowerCase() === "withdrawal"
+        ? "withdrawal"
+        : "payment";
+
       // Validate network
       if (!networkConfig.networks[network]) {
-        return res.status(400).json({ error: 'Unsupported network' });
+        return res.status(400).json({ error: "Unsupported network" });
       }
-      
+
       const newTx = new Transaction({
         transaction_hash: txHash,
         sender: sender.toLowerCase(),
         receiver: recipient.toLowerCase(),
         token: currency,
         amount: amount.toString(),
-        blockNumber: "pending", 
+        blockNumber: "pending",
         timestamp: timestamp ? new Date(timestamp) : new Date(),
         network: network,
-        status: 'confirmed',
+        status: "confirmed",
         function_name: function_name, // 'pay', 'withdrawal', 'deposit',
         direction: direction,
         displayType: displayType,
         token_decimals: token_decimals || 6,
-        token_symbol: token_symbol || 'USDC',
-        fee: fee?.toString() || '0',
-        contractAddress: contractAddress || networkConfig.networks[network].contractAddress
+        token_symbol: token_symbol || "USDC",
+        fee: fee?.toString() || "0",
+        contractAddress:
+          contractAddress || networkConfig.networks[network].contractAddress,
       });
-  
+
       await newTx.save();
-  
+
       // Determine boost address - use const instead of let
-      const boostAddress = function_name.toLowerCase() === 'deposit' 
-        ? recipient.toLowerCase() 
-        : sender.toLowerCase();
-  
-      console.log(`Processing ${function_name} transaction from ${sender} to ${recipient}`);
+      const boostAddress =
+        function_name.toLowerCase() === "deposit"
+          ? recipient.toLowerCase()
+          : sender.toLowerCase();
+
+      console.log(
+        `Processing ${function_name} transaction from ${sender} to ${recipient}`
+      );
       console.log(`Boost address: ${boostAddress}`);
-  
-      const user = await User.findOne({ 
-        'wallets.address': boostAddress 
+
+      const user = await User.findOne({
+        "wallets.address": boostAddress,
       });
-  
-        if (user && user.miningSession?.isActive) {
-          // Normalize function name and update booster
-          let normalizedFunction = function_name.toLowerCase().replace(/[^a-z]/g, '');
-          
-          // Handle "withdrawal" → "withdraw"
-          if (normalizedFunction === 'withdrawal') {
-            normalizedFunction = 'withdraw';
-          }
-          
-          await MiningController.updateBooster(user, normalizedFunction);
-          console.log(`Booster updated for user: ${user._id}`);
+
+      if (user && user.miningSession?.isActive) {
+        // Normalize function name and update booster
+        let normalizedFunction = function_name
+          .toLowerCase()
+          .replace(/[^a-z]/g, "");
+
+        // Handle "withdrawal" → "withdraw"
+        if (normalizedFunction === "withdrawal") {
+          normalizedFunction = "withdraw";
         }
-      
+
+        await MiningController.updateBooster(user, normalizedFunction);
+        console.log(`Booster updated for user: ${user._id}`);
+      }
+
       res.json({ success: true, transaction: newTx });
     } catch (error) {
-      console.error('Notification error:', error);
+      console.error("Notification error:", error);
       res.status(500).json({ error: error.message });
     }
   },
-  indexNewTransactions
+  indexNewTransactions,
 };
 
