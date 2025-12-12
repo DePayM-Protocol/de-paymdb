@@ -342,7 +342,7 @@ module.exports = {
         direction: direction,
         displayType: displayType,
         token_decimals: token_decimals || netCfg.tokens[tokenKey].decimals || 6,
-        token_symbol: token_symbol || tokenKey,
+        token_symbol: token_symbol || tokenKey || USDC,
         fee: fee?.toString() || "0",
         contractAddress: contractAddress || netCfg.contractAddress,
         raw_payload: req.body, // optional, useful for auditing
