@@ -174,10 +174,7 @@ module.exports = {
         };
       });*/
 
-      // put near the top of file if not already
-      const { ethers } = require("ethers");
 
-      // ... inside getTransactions, after fetching `transactions`:
       const enhancedTx = transactions.map((tx) => {
         const isSender = (tx.sender || "").toLowerCase() === address;
         const func = (tx.function_name || "").toLowerCase();
