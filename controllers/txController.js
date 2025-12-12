@@ -1,4 +1,4 @@
-const { ethers } = require("ethers");
+const { ethers, ContractUnknownEventPayload } = require("ethers");
 const Transaction = require("../models/transactions");
 const User = require("../models/user");
 const MiningController = require("./miningController");
@@ -76,10 +76,23 @@ async function processEvent(event, provider, networkName, contractAddress) {
   const block = await provider.getBlock(receipt.blockNumber);
 
   // Get token config
-  const tokenAddress = event.args.token;
-  const tokenConfig = Object.values(
-    networkConfig.networks[networkName].tokens
-  ).find((t) => t.address.toLowerCase() === tokenAddress.toLowerCase());
+    // Get token config - normalize addresses and find symbol/decimals/official token address
+  const tokenAddressRaw = String(event.args.token || "");
+  const tokenAddressLower = tokenAddressRaw.toLowerCase();
+  const networkTokens = networkConfig.networks[networkName].tokens || {};
+
+  let tokenSymbol = "UNKNOWN";
+  let tokenConfig;
+  let tokenAddressCanonical = tokenAddressRaw;
+
+  for (const [sym, cfg] of Object.entries(networkTokens)) {
+    if ((String(cfg.address || "")).toLowerCase() === tokenAddressLower) {
+      tokenSymbol = sym;
+      tokenConfig = cfg;
+      tokenAddressCanonical = cfg.address; // preserve configured canonical address casing
+      break;
+    }
+  }
 
   const baseTx = {
     transaction_hash: txHash,
@@ -88,15 +101,11 @@ async function processEvent(event, provider, networkName, contractAddress) {
     status: receipt.status === 1 ? "confirmed" : "failed",
     timestamp: new Date(block.timestamp * 1000),
     network: networkName,
-    token: tokenAddress,
-    token_decimals: tokenConfig?.decimals || 6,
-    token_symbol:
-      Object.keys(networkConfig.networks[networkName].tokens).find(
-        (key) =>
-          networkConfig.networks[networkName].tokens[key].address ===
-          tokenAddress
-      ) || "UNKNOWN",
+    token: tokenAddressCanonical, // store canonical address
+    token_decimals: (tokenConfig && tokenConfig.decimals) || 6,
+    token_symbol: tokenSymbol,
   };
+
 
   // Event-specific processing
   switch (event.eventName) {
@@ -318,35 +327,79 @@ module.exports = {
       const { displayName: canonicalNetworkName, config: netCfg } = resolved;
 
       // Validate token exists on this resolved network
-      const tokenKey = (currency || "").toUpperCase();
+   /*   const tokenKey = (currency || "").toUpperCase();
       if (!netCfg.tokens || !netCfg.tokens[tokenKey]) {
         return res.status(400).json({ error: "Unsupported token" });
+      }*/
+
+            // Determine decimals from payload or network config
+      const tokenKey = (currency || "").toUpperCase();
+      const decimalsFromCfg = netCfg.tokens?.[tokenKey]?.decimals ?? 6;
+      const decimals = Number(token_decimals ?? decimalsFromCfg);
+
+      // Normalize amount -> base unit string
+      let amountBase;
+      if (amount === undefined || amount === null) {
+        amountBase = "0";
+      } else if (typeof amount === "string") {
+        if (/^-?\d+$/.test(amount)) {
+          // already an integer in base-units
+          amountBase = amount;
+        } else if (/^-?\d+\.\d+$/.test(amount)) {
+          // decimal representation (e.g. "1.23"), parse to base units
+          amountBase = ethers.parseUnits(amount, decimals).toString();
+        } else {
+          // fallback: try numeric conversion
+          const n = Number(amount);
+          if (!Number.isNaN(n)) amountBase = ethers.parseUnits(String(n), decimals).toString();
+          else amountBase = String(amount);
+        }
+      } else if (typeof amount === "number") {
+        // numeric, convert safely
+        amountBase = ethers.parseUnits(String(amount), decimals).toString();
+      } else {
+        // fallback: toString
+        amountBase = String(amount);
       }
 
+      // Determine token_symbol reliably: prefer provided token_symbol but fallback to tokenKey
+      const resolvedTokenSymbol = (token_symbol && String(token_symbol).toUpperCase()) || tokenKey;
+
+
       // Build the transaction record and persist both forms: network_key (raw input) and canonical display name
-      const newTx = new Transaction({
+            const newTx = new Transaction({
         transaction_hash: txHash,
         sender: sender.toLowerCase(),
         receiver: recipient.toLowerCase(),
         token: tokenKey,
         token_address: netCfg.tokens[tokenKey].address,
-        amount: amount * (10 ** (token_decimals )), //|| netCfg.tokens[tokenKey].decimals || 6)),
-        //amount: amount.toString(),
+        amount: amountBase, // scaled integer string
         blockNumber: "pending",
         timestamp: timestamp ? new Date(timestamp) : new Date(),
-        network_key: String(rawNetworkInput), // the exact client-provided value
-        network: canonicalNetworkName, // canonical display name you already use
-        chainId: netCfg.chainId, // numeric chainId
+        network_key: String(rawNetworkInput),
+        network: canonicalNetworkName,
+        chainId: netCfg.chainId,
         status: "confirmed",
         function_name: function_name,
         direction: direction,
         displayType: displayType,
-        token_decimals: token_decimals || netCfg.tokens[tokenKey].decimals || 6,
-        token_symbol: token_symbol || tokenKey || USDC,
-        fee: fee?.toString() || "0",
+        token_decimals: decimals,
+        token_symbol: resolvedTokenSymbol,
+        fee: (() => {
+          // ensure fee stored as base-unit string (similar normalization)
+          try {
+            if (!fee) return "0";
+            if (typeof fee === "string" && /^-?\d+$/.test(fee)) return fee;
+            // if decimals known, try parseUnits if fee has decimals or is number
+            if (typeof fee === "string" && fee.includes(".")) return ethers.parseUnits(fee, decimals).toString();
+            if (typeof fee === "number") return ethers.parseUnits(String(fee), decimals).toString();
+            return String(fee);
+          } catch (e) { return String(fee); }
+        })(),
         contractAddress: contractAddress || netCfg.contractAddress,
-        raw_payload: req.body, // optional, useful for auditing
+        raw_payload: req.body,
       });
+
 
       await newTx.save();
 
