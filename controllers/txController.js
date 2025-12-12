@@ -330,7 +330,8 @@ module.exports = {
         receiver: recipient.toLowerCase(),
         token: tokenKey,
         token_address: netCfg.tokens[tokenKey].address,
-        amount: amount.toString(),
+        amount: amount * (10 ** (token_decimals )), //|| netCfg.tokens[tokenKey].decimals || 6)),
+        //amount: amount.toString(),
         blockNumber: "pending",
         timestamp: timestamp ? new Date(timestamp) : new Date(),
         network_key: String(rawNetworkInput), // the exact client-provided value
