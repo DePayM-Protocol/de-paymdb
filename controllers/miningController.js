@@ -174,8 +174,6 @@ class MiningController {
       }
       const earnings = MiningController.calculateEarnings(user);
       // In stopMining function (backend):
-      user.balance = parseFloat((user.balance + earnings).toFixed(6)); //line 125
-       
       user.balance = parseFloat((user.balance + earnings).toFixed(6));
       user.miningSession.isActive = false;
       user.miningSession.lastClaim = new Date();
@@ -252,7 +250,7 @@ class MiningController {
       let accumulated = 0;
       let progress = 0;
 
-      
+      /*
       
       const now = Date.now();
     let boosterRate     = 0;
@@ -303,6 +301,55 @@ class MiningController {
       };
     }
   }
+  */
+
+  
+const nowTs = Date.now();
+
+// Compute valid booster functions & timeLeft safely
+let boosterRate = 0;
+let boosterTimeLeft = 0;
+let boosterData = {};
+
+const rate = parseFloat((
+  BASE_HOURLY_RATE +
+  REFERRAL_BONUS * activeRefs +
+  boosterRate
+).toFixed(6));
+
+if (user.miningSession.isActive) {
+  const elapsed = Date.now() - user.miningSession.startTime;
+  const hours = Math.min(elapsed, MAX_SESSION_DURATION) / 3600000;
+  accumulated = parseFloat(((BASE_HOURLY_RATE + REFERRAL_BONUS * activeRefs + boosterRate) * hours).toFixed(6));
+  progress = Math.min(elapsed / MAX_SESSION_DURATION, 1);
+}
+
+
+if (user.booster && user.booster.expiration) {
+  const expiration = user.booster.expiration instanceof Date
+    ? user.booster.expiration.getTime()
+    : new Date(user.booster.expiration).getTime();
+
+  if (nowTs < expiration) {
+    // Extract valid function keys (ignore Mongoose internals)
+    const validKeys = Object.keys(user.booster.functions || {}).filter(
+      k => !k.startsWith('$') && !k.startsWith('_')
+    );
+
+    boosterRate = validKeys.length * BOOST_PER_FUNCTION;
+    boosterTimeLeft = expiration - nowTs;
+
+    boosterData = {
+      functions: validKeys,
+      expiration: new Date(expiration),
+      rate: boosterRate
+    };
+  } else {
+    // expired
+    boosterData = { functions: [], expiration: null, rate: 0 };
+  }
+}
+
 
 
     return res.json({
@@ -335,7 +382,7 @@ class MiningController {
   }
 
   // Helper Methods
-  static calculateEarnings(user) {
+  /*static calculateEarnings(user) {
     if (!user.miningSession?.isActive) return 0;
     const elapsedMs = Date.now() - user.miningSession.startTime;
     const hours = Math.min(elapsedMs, MAX_SESSION_DURATION) / 3600000;
@@ -353,12 +400,57 @@ class MiningController {
       REFERRAL_BONUS * activeRefs + 
       boosterRate) * hours
     ).toFixed(6));
+  }*/
+
+    static calculateEarnings(user) {
+  if (!user.miningSession?.isActive) return 0;
+  const elapsedMs = Date.now() - user.miningSession.startTime;
+  const hours = Math.min(elapsedMs, MAX_SESSION_DURATION) / 3600000;
+
+  const activeRefs = MiningController.countActiveReferrals(user.referrals);
+
+  let boosterRate = 0;
+  if (user.booster?.expiration && new Date() < new Date(user.booster.expiration)) {
+    const validKeys = Object.keys(user.booster.functions || {}).filter(
+      k => !k.startsWith('$') && !k.startsWith('_')
+    );
+    boosterRate = validKeys.length * BOOST_PER_FUNCTION;
   }
+
+  return parseFloat((
+    (BASE_HOURLY_RATE + REFERRAL_BONUS * activeRefs + boosterRate) * hours
+  ).toFixed(6));
+}
+
   
 
-  static countActiveReferrals(refs) {
+  /*static countActiveReferrals(refs) {
     return refs.filter(r => r.miningSession?.isActive).length;
+  }*/
+
+    static countActiveReferrals(refs = []) {
+  const now = Date.now();
+  try {
+    return refs.filter(r => {
+      if (!r || !r.miningSession) return false;
+      if (!r.miningSession.isActive) return false;
+
+      // Ensure startTime exists and the session is not expired
+      const start = r.miningSession.startTime ? new Date(r.miningSession.startTime).getTime() : null;
+      if (!start) return false;
+      if (now - start > MAX_SESSION_DURATION) return false;
+
+      // If the referral has a cooldownEnd and it's still in cooldown, they are NOT active
+      if (r.cooldownEnd && now < new Date(r.cooldownEnd).getTime()) return false;
+
+      return true;
+    }).length;
+  } catch (e) {
+    console.error('countActiveReferrals error', e);
+    return 0;
   }
+}
+
 
   static isInCooldown(user) {
     return user.cooldownEnd && Date.now() < user.cooldownEnd;

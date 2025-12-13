@@ -1,5 +1,14 @@
 // networks.js
 const raw = {
+  "Arc Testnet": {
+    chainId: 5042002,
+    rpcUrl: process.env.ARC_TESTNET_RPC || 'https://rpc.testnet.arc.network',
+    contractAddress: process.env.ARC_TESTNET_DEPAYM_CONTRACT || '0x039D6339B0c8F9dC62693fb359817603fF421780',
+    tokens: {
+      USDC: { address: '0x3600000000000000000000000000000000000000', decimals: 6 },
+      EURC: { address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a', decimals: 6 }
+    }
+  },
   "Base Sepolia": {
     chainId: 84532,
     rpcUrl: process.env.BASE_SEPOLIA_RPC || 'https://sepolia.base.org/rpc',
