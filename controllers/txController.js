@@ -188,6 +188,14 @@ module.exports = {
         const isSender = (tx.sender || "").toLowerCase() === address;
         const func = (tx.function_name || "").toLowerCase();
 
+        console.log("DEBUG tx:", {
+  txId: tx.transaction_hash,
+  token_symbol: tx.token_symbol,
+  token_decimals_stored: tx.token_decimals,
+  raw_amount: tx.amount?.toString?.() ?? tx.amount,
+});
+
+
         let displayType, direction;
         if (func === "pay") {
           displayType = "payment";
@@ -399,6 +407,11 @@ module.exports = {
         contractAddress: contractAddress || netCfg.contractAddress,
         raw_payload: req.body,
       });
+
+      console.log("DEBUG notify payload:", {
+  txHash, currency, token_symbol, token_decimals, decimals, amount, amountBase
+});
+
 
 
       await newTx.save();
