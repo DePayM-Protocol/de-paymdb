@@ -19,100 +19,110 @@ const walletSchema = new mongoose.Schema({
 }, { _id: false }); // Prevent auto _id generation for each wallet
 
 // Define user schema
-const userSchema = mongoose.Schema({
-  username: {
-    type: String,
-    trim: true
+const userSchema = mongoose.Schema(
+  {
+    username: {
+      type: String,
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: [true, "Email is needed to proceed."],
+      trim: true,
+      unique: true,
+      minlength: [7, "Email must have at least 7 characters!"],
+      lowercase: true,
+    },
+    password: {
+      type: String,
+      required: [true, "Password must be provided!"],
+      trim: true,
+      select: false,
+    },
+    verified: {
+      type: Boolean,
+      default: false,
+    },
+    verificationCode: {
+      type: String,
+      select: false,
+    },
+    verificationCodeExpires: {
+      type: Date,
+      select: false,
+    },
+    verificationCodeValidation: {
+      type: String,
+      select: false,
+    },
+    forgotPasswordCode: {
+      type: String,
+      select: false,
+    },
+    forgotPasswordCodeValidation: {
+      type: String,
+      select: false,
+    },
+    isRelayer: {
+      type: Boolean,
+      default: false,
+    },
+    relayerProfile: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Relayer",
+    },
+    transactions: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Transaction",
+      },
+    ],
+    wallets: {
+      type: [walletSchema],
+      default: [],
+    },
+    boosterStart: Date, // When current boost started
+    boosterExpiration: Date, // When boost expires
+    boosterRate: {
+      // Current boost rate (DPAYM/hour)
+      type: Number,
+      default: 0,
+    },
+    balance: { type: Number, default: 0 },
+    totalClaimed: { type: Number, default: 0 },
+    lastClaimTime: { type: Date, default: Date.now },
+    ratePerHour: { type: Number, default: 0.012 },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    booster: {
+      type: {
+        functions: mongoose.Schema.Types.Mixed, // ✅ Change to Mixed type
+
+        expiration: Date,
+
+        rate: Number,
+      },
+
+      default: null,
+    },
+    accumulated: { type: Number, default: 0 },
+    cooldownEnd: Date,
+    miningSession: {
+      startTime: Date,
+      storageCapacity: { type: Number, default: 100 },
+      currentStorage: { type: Number, default: 0 },
+      lastClaim: Date,
+      isActive: { type: Boolean, default: false },
+    },
+    referrals: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
-  email: {
-    type: String,
-    required: [true, 'Email is needed to proceed.'],
-    trim: true,
-    unique: true,
-    minlength: [7, "Email must have at least 7 characters!"],
-    lowercase: true
-  },
-  password: {
-    type: String,
-    required: [true, 'Password must be provided!'],
-    trim: true,
-    select: false
-  },
-  verified: {
-    type: Boolean,
-    default: false
-  },
-  verificationCode: {
-    type: String,
-    select: false
-  },
-  verificationCodeExpires: {
-    type: Date,
-    select: false
-  },
-  verificationCodeValidation: {
-    type: String,
-    select: false
-  },
-  forgotPasswordCode: {
-    type: String,
-    select: false
-  },
-  forgotPasswordCodeValidation: {
-    type: String,
-    select: false
-  },
-  isRelayer: {
-    type: Boolean,
-    default: false
-  },
-  relayerProfile: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Relayer'
-  },
-  transactions: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Transaction'
-  }],
-  wallets: {
-    type: [walletSchema],
-    default: []
-  },
-  boosterStart: Date,       // When current boost started
-  boosterExpiration: Date,  // When boost expires
-  boosterRate: {            // Current boost rate (DPAYM/hour)
-    type: Number,
-    default: 0
-  },   
-  balance: { type: Number, default: 0 },
-  totalClaimed: { type: Number, default: 0 },
-  lastClaimTime: { type: Date, default: Date.now },
-  ratePerHour: { type: Number, default: 0.012 },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  booster: {
-  functions: { type: Map, of: Boolean, default: {} }, // or plain Object
-  startTime: { type: Date, default: null },
-  expiration: { type: Date, default: null },
-  rate: { type: Number, default: 0 }
-},
-  accumulated: { type: Number, default: 0 },
-  cooldownEnd: Date,
-  miningSession: {
-    startTime: Date,
-    storageCapacity: { type: Number, default: 100 },
-    currentStorage: { type: Number, default: 0 },
-    lastClaim: Date,
-    isActive: { type: Boolean, default: false }
-  },
-  referrals: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
-},
- {
-  timestamps: true
-});
+  {
+    timestamps: true,
+  }
+);
 
 const User = mongoose.model('User', userSchema)
 
