@@ -225,136 +225,94 @@ class MiningController {
       }
     }
   }
+
   /**
    * Get current mining status
    */
+  
   static async getMiningStatus(req, res) {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ success: false, error: 'Authentication required' });
-      }
-
-      const user = await User.findById(userId).populate('referrals', 'miningSession');
-      if (!user) {
-        return res.status(404).json({ success: false, error: 'User not found' });
-      }
-
-      if (!user.miningSession) {
-        user.miningSession = { startTime: null, lastClaim: null, isActive: false };
-        await user.save();
-      }
-
-      const cooldown = user.cooldownEnd ? Math.max(0, user.cooldownEnd - Date.now()) : 0;
-      const activeRefs = MiningController.countActiveReferrals(user.referrals);
-      let accumulated = 0;
-      let progress = 0;
-
-      /*
-      
-      const now = Date.now();
-    let boosterRate     = 0;
-    let boosterTimeLeft = 0;
-    if (user.booster?.expiration && now < user.booster.expiration.getTime()) {
-      boosterRate     = user.booster.functions.length * BOOST_PER_FUNCTION;
-      boosterTimeLeft = user.booster.expiration.getTime() - now;
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
     }
 
+    const user = await User.findById(userId).populate('referrals', 'miningSession cooldownEnd');
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    if (!user.miningSession) {
+      user.miningSession = { startTime: null, lastClaim: null, isActive: false };
+      await user.save();
+    }
+
+    const nowTs = Date.now();
+
+    const cooldown = user.cooldownEnd
+      ? Math.max(0, user.cooldownEnd.getTime() - nowTs)
+      : 0;
+
+    const activeRefs = MiningController.countActiveReferrals(user.referrals);
+
+    // --------------------------------------------------
+    // ✅ BOOSTER CALCULATION (FIRST)
+    // --------------------------------------------------
+    let boosterRate = 0;
+    let boosterTimeLeft = 0;
+    let boosterData = { functions: [], expiration: null, rate: 0 };
+
+    if (user.booster && user.booster.expiration) {
+      const expiration = user.booster.expiration instanceof Date
+        ? user.booster.expiration.getTime()
+        : new Date(user.booster.expiration).getTime();
+
+      if (nowTs < expiration) {
+        const validKeys = Object.keys(user.booster.functions || {}).filter(
+          k => !k.startsWith('$') && !k.startsWith('_')
+        );
+
+        boosterRate = validKeys.length * BOOST_PER_FUNCTION;
+        boosterTimeLeft = expiration - nowTs;
+
+        boosterData = {
+          functions: validKeys,
+          expiration: new Date(expiration),
+          rate: boosterRate,
+        };
+      }
+    }
+
+    // --------------------------------------------------
+    // ✅ FINAL RATE (BASE + REFERRALS + BOOSTER)
+    // --------------------------------------------------
     const rate = parseFloat((
-      BASE_HOURLY_RATE + 
+      BASE_HOURLY_RATE +
       REFERRAL_BONUS * activeRefs +
       boosterRate
     ).toFixed(6));
 
-      if (user.miningSession.isActive) {
-        const elapsed = Date.now() - user.miningSession.startTime;
-        const hours = Math.min(elapsed, MAX_SESSION_DURATION) / 3600000;
-        accumulated = parseFloat(((BASE_HOURLY_RATE + REFERRAL_BONUS * activeRefs ) * hours).toFixed(6));
-        progress = Math.min(elapsed / MAX_SESSION_DURATION, 1);
-      }
+    // --------------------------------------------------
+    // ✅ ACCUMULATED + PROGRESS (USES FINAL RATE)
+    // --------------------------------------------------
+    let accumulated = 0;
+    let progress = 0;
 
-    // Get valid function keys (exclude Mongoose internals)
-  let validFunctions = [];
-  if (user.booster?.functions) {
-    validFunctions = Object.keys(user.booster.functions).filter(
-      key => !key.startsWith('$')
-    );
-  }
+    if (user.miningSession.isActive && user.miningSession.startTime) {
+      const elapsedMs = nowTs - user.miningSession.startTime.getTime();
+      const cappedMs = Math.min(elapsedMs, MAX_SESSION_DURATION);
+      const hours = cappedMs / 3600000;
 
-  // Create clean booster data
-  let boosterData = {};
-  if (user.booster && user.booster.expiration) {
-    const now = new Date();
-    const expiration = user.booster.expiration instanceof Date ? 
-        user.booster.expiration : new Date(user.booster.expiration);
-    
-    if (now < expiration) {
-      // Filter out internal properties
-      const validKeys = Object.keys(user.booster.functions || {}).filter(
-        key => !key.startsWith('$') && !key.startsWith('_')
-      );
-      
-      boosterData = {
-        functions: validKeys,
-        expiration: expiration,
-        rate: validKeys.length * BOOST_PER_FUNCTION
-      };
+      accumulated = parseFloat((rate * hours).toFixed(6));
+      progress = Math.min(cappedMs / MAX_SESSION_DURATION, 1);
     }
-  }
-  */
 
-  
-const nowTs = Date.now();
-
-// Compute valid booster functions & timeLeft safely
-let boosterRate = 0;
-let boosterTimeLeft = 0;
-let boosterData = {};
-
-const rate = parseFloat((
-  BASE_HOURLY_RATE +
-  REFERRAL_BONUS * activeRefs +
-  boosterRate
-).toFixed(6));
-
-if (user.miningSession.isActive) {
-  const elapsed = Date.now() - user.miningSession.startTime;
-  const hours = Math.min(elapsed, MAX_SESSION_DURATION) / 3600000;
-  accumulated = parseFloat(((BASE_HOURLY_RATE + REFERRAL_BONUS * activeRefs + boosterRate) * hours).toFixed(6));
-  progress = Math.min(elapsed / MAX_SESSION_DURATION, 1);
-}
-
-
-if (user.booster && user.booster.expiration) {
-  const expiration = user.booster.expiration instanceof Date
-    ? user.booster.expiration.getTime()
-    : new Date(user.booster.expiration).getTime();
-
-  if (nowTs < expiration) {
-    // Extract valid function keys (ignore Mongoose internals)
-    const validKeys = Object.keys(user.booster.functions || {}).filter(
-      k => !k.startsWith('$') && !k.startsWith('_')
-    );
-
-    boosterRate = validKeys.length * BOOST_PER_FUNCTION;
-    boosterTimeLeft = expiration - nowTs;
-
-    boosterData = {
-      functions: validKeys,
-      expiration: new Date(expiration),
-      rate: boosterRate
-    };
-  } else {
-    // expired
-    boosterData = { functions: [], expiration: null, rate: 0 };
-  }
-}
-
-
-
+    // --------------------------------------------------
+    // RESPONSE
+    // --------------------------------------------------
     return res.json({
       success: true,
-      message: "Mining status retrieved",
+      message: 'Mining status retrieved',
       data: {
         isActive: user.miningSession.isActive,
         balance: parseFloat(user.balance.toFixed(6)),
@@ -363,23 +321,20 @@ if (user.booster && user.booster.expiration) {
         cooldown,
         referrals: user.referrals.length,
         activeReferrals: activeRefs,
+
+        rate,                     // ✅ correct boosted rate
         boosterRate,
         boosterTimeLeft: boosterTimeLeft > 0 ? boosterTimeLeft : 0,
-
-        rate: parseFloat((
-          BASE_HOURLY_RATE + 
-          REFERRAL_BONUS * activeRefs +
-          (boosterData.rate || 0)
-        ).toFixed(6)),
-        booster: boosterData // Send the full booster data
+        booster: boosterData,     // { functions[], expiration, rate }
       },
     });
+
+  } catch (err) {
+    console.error('getMiningStatus error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to get mining status' });
   }
- catch (err) {
-      console.error('getMiningStatus error:', err);
-      return res.status(500).json({ success: false, error: 'Failed to get mining status' });
-    }
-  }
+}
+
 
   // Helper Methods
   /*static calculateEarnings(user) {
