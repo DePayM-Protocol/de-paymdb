@@ -62,15 +62,6 @@ class MiningController {
         lastClaim: new Date(),
       };
       user.cooldownEnd = null; // Reset cooldown
-
-      // Reset booster when starting new session
-      user.booster = {
-        functions: {},
-        startTime: null,
-        expiration: null,
-        rate: 0,
-      };
-
       await user.save();
       await MiningController.validateSession(user);
 
@@ -141,8 +132,6 @@ class MiningController {
     if (!booster.functions[functionName]) {
       booster.functions[functionName] = true;
       console.log(`Added ${functionName} boost for user: ${user._id}`);
-    } else {
-      console.log(`${functionName} already in booster`);
     }
 
     // If this is first valid function and booster.startTime is not set, set startTime + expiration
@@ -186,7 +175,7 @@ class MiningController {
       } else if (req.body.walletAddress) {
         user = await User.findOne({
           "wallets.address": req.body.walletAddress.toLowerCase(),
-        }).populate("referrals", "miningSession lastClaim cooldownEnd");
+        }).populate("referrals", "miningSession");
       }
 
       if (!user) {
@@ -204,24 +193,28 @@ class MiningController {
       const stopTs = Date.now();
       const earnings = MiningController.calculateEarnings(user, stopTs);
 
-      // Update user balances and session fields
+      // In stopMining function (backend):
       user.balance = parseFloat((user.balance + earnings).toFixed(6));
       user.miningSession.isActive = false;
-      user.miningSession.lastClaim = new Date(stopTs);
+      user.miningSession.lastClaim = new Date();
       user.cooldownEnd = new Date(Date.now() + SESSION_COOLDOWN);
-
-      // Clear booster when session ends - use the proper structure
+      user.boosterCount = 0;
+      user.boosterExpiration = null;
       user.booster = {
         functions: {},
-        startTime: null,
         expiration: null,
-        rate: 0,
       };
 
-      await user.save();
+      if (user.booster?.expiration) {
+        const now = new Date();
+        if (now > user.booster.expiration) {
+          user.booster = { functions: {}, expiration: null, rate: 0 };
+        }
+      } else {
+        user.booster = { functions: {}, expiration: null, rate: 0 };
+      }
 
-      // Get active referrals count for response
-      const activeRefs = MiningController.countActiveReferrals(user.referrals);
+      await user.save();
 
       return res.json({
         success: true,
@@ -231,7 +224,9 @@ class MiningController {
           balance: user.balance.toFixed(6),
           cooldown: SESSION_COOLDOWN,
           referrals: user.referrals.length,
-          activeReferrals: activeRefs,
+          activeReferrals: MiningController.countActiveReferrals(
+            user.referrals
+          ),
         },
       });
     } catch (err) {
@@ -242,29 +237,20 @@ class MiningController {
     }
   }
 
+
   static async validateSession(user) {
     if (user.miningSession?.isActive) {
       const sessionStart = user.miningSession.startTime.getTime();
       if (Date.now() - sessionStart > MAX_SESSION_DURATION) {
-        const stopTs = sessionStart + MAX_SESSION_DURATION;
-        const earnings = this.calculateEarnings(user, stopTs);
-        user.balance = parseFloat((user.balance + earnings).toFixed(6));
+        const earnings = this.calculateEarnings(user);
+        user.balance += earnings;
         user.miningSession.isActive = false;
-        user.miningSession.lastClaim = new Date(stopTs);
         user.cooldownEnd = new Date(Date.now() + SESSION_COOLDOWN);
-
-        // Clear booster when session ends
-        user.booster = {
-          functions: {},
-          startTime: null,
-          expiration: null,
-          rate: 0,
-        };
-
         await user.save();
       }
     }
   }
+
 
   /**
    * Get current mining status
@@ -280,7 +266,7 @@ class MiningController {
 
       const user = await User.findById(userId).populate(
         "referrals",
-        "miningSession cooldownEnd lastClaim"
+        "miningSession cooldownEnd"
       );
       if (!user) {
         return res
@@ -308,6 +294,8 @@ class MiningController {
       // --------------------------------------------------
       // ✅ BOOSTER CALCULATION (FIRST)
       // --------------------------------------------------
+      // in getMiningStatus, after you have user and nowTs
+
       let boosterRate = 0;
       let boosterTimeLeft = 0;
       let boosterData = {
@@ -406,7 +394,7 @@ class MiningController {
           rate, // ✅ correct boosted rate
           boosterRate,
           boosterTimeLeft: boosterTimeLeft > 0 ? boosterTimeLeft : 0,
-          booster: boosterData,
+          booster: boosterData, // { functions[], expiration, rate }
         },
       });
     } catch (err) {
