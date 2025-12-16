@@ -10,18 +10,15 @@ const BOOST_PER_FUNCTION = 0.2; // DPAYM per hour per function
 const BOOST_DURATION = 4 * 60 * 60 * 1000; // 4 hours in ms
 
 class MiningController {
-  /* --------------------------
-     START / STOP / VALIDATE
-     -------------------------- */
+  /* ---------------- START / STOP / VALIDATE ---------------- */
 
   static async startMining(req, res) {
     try {
       const userId = req.user?.id;
-      if (!userId) {
+      if (!userId)
         return res
           .status(401)
           .json({ success: false, error: "Authentication required" });
-      }
 
       const user = await User.findById(userId);
       if (!user)
@@ -29,7 +26,6 @@ class MiningController {
           .status(404)
           .json({ success: false, error: "User not found" });
 
-      // ensure wallets are not cross-linked
       if (user.wallets && Array.isArray(user.wallets)) {
         for (const wallet of user.wallets) {
           const existing = await User.findOne({
@@ -58,20 +54,16 @@ class MiningController {
         isActive: true,
         lastClaim: new Date(),
       };
-
       user.cooldownEnd = null;
       await user.save();
 
-      // schedule validateSession externally if you have a job scheduler; also run immediate validateSession
+      // optional: validateSession can be scheduled by a job runner; we call once for safety
       await MiningController.validateSession(user);
 
       return res.json({
         success: true,
         message: "Mining started successfully",
-        data: {
-          startTime: user.miningSession.startTime,
-          cooldown: null,
-        },
+        data: { startTime: user.miningSession.startTime, cooldown: null },
       });
     } catch (err) {
       console.error("startMining error:", err);
@@ -81,10 +73,6 @@ class MiningController {
     }
   }
 
-  /**
-   * Stop mining and claim rewards.
-   * Uses calculateEarnings(user, stopTs) BEFORE clearing boosters/session state.
-   */
   static async stopMining(req, res) {
     try {
       let user;
@@ -92,7 +80,7 @@ class MiningController {
         user = await User.findById(req.user.id)
           .populate("referrals", "miningSession lastClaim cooldownEnd")
           .exec();
-      } else if (req.body.walletAddress) {
+      } else if (req.body?.walletAddress) {
         user = await User.findOne({
           "wallets.address": req.body.walletAddress.toLowerCase(),
         })
@@ -104,7 +92,7 @@ class MiningController {
         return res
           .status(404)
           .json({ success: false, error: "User not found" });
-      if (!user?.miningSession?.isActive)
+      if (!user.miningSession?.isActive)
         return res
           .status(400)
           .json({ success: false, error: "No active mining session to stop" });
@@ -112,18 +100,17 @@ class MiningController {
       const stopTs = Date.now();
       const earnings = MiningController.calculateEarnings(user, stopTs);
 
-      // Update user
-      user.balance = parseFloat((user.balance + earnings).toFixed(6));
+      user.balance = parseFloat(((user.balance || 0) + earnings).toFixed(6));
       user.miningSession.isActive = false;
       user.miningSession.lastClaim = new Date(stopTs);
       user.cooldownEnd = new Date(stopTs + SESSION_COOLDOWN);
 
-      const activeRefs = MiningController.countActiveReferrals(user.referrals);
+      const activeRefs = MiningController.countActiveReferrals(
+        user.referrals || []
+      );
 
-      // Reset boosters (Design A: boosters don't extend; clearing after stop)
-      user.booster = {
-        functions: {}, // normalized shape
-      };
+      // Clear boosters (Design A: boosters cleared once session stops)
+      user.booster = { functions: {} };
       user.markModified("booster");
 
       await user.save();
@@ -135,7 +122,7 @@ class MiningController {
           earned: earnings.toFixed(6),
           balance: user.balance.toFixed(6),
           cooldown: SESSION_COOLDOWN,
-          referrals: user.referrals?.length || 0,
+          referrals: (user.referrals || []).length,
           activeReferrals: activeRefs,
         },
       });
@@ -147,27 +134,20 @@ class MiningController {
     }
   }
 
-  /**
-   * validateSession: finalize if session exceeded MAX_SESSION_DURATION
-   */
   static async validateSession(user) {
     try {
       if (!user || !user.miningSession?.isActive) return;
-
       const sessionStart = user.miningSession.startTime
         ? new Date(user.miningSession.startTime).getTime()
         : null;
       if (!sessionStart) return;
 
       if (Date.now() - sessionStart > MAX_SESSION_DURATION) {
-        // finalize up to max duration
         const endTs = sessionStart + MAX_SESSION_DURATION;
         const earnings = MiningController.calculateEarnings(user, endTs);
-        user.balance = parseFloat((user.balance + earnings).toFixed(6));
+        user.balance = parseFloat(((user.balance || 0) + earnings).toFixed(6));
         user.miningSession.isActive = false;
         user.cooldownEnd = new Date(Date.now() + SESSION_COOLDOWN);
-
-        // clear boosters
         user.booster = { functions: {} };
         user.markModified("booster");
         await user.save();
@@ -177,16 +157,13 @@ class MiningController {
     }
   }
 
-  /* --------------------------
-     BOOSTER: Flexible representation & update
-     - Supports legacy boolean functions and new per-function windows.
-     - Design A: set function window only when first activated; do not extend on repeat.
-     -------------------------- */
+  /* ---------------- UPDATE BOOSTER (activation only, DESIGN A) ---------------- */
 
   /**
    * updateBooster(user, rawFunctionName)
-   * - user: mongoose document (must be fetched and attached)
-   * - rawFunctionName: 'pay' | 'deposit' | 'withdraw'
+   * - ensures booster.functions uses per-function windows: { startTime, expiration }
+   * - supports legacy booleans (true/false) by converting them
+   * - sets a window only if the function wasn't active or it expired (no extension while active)
    */
   static async updateBooster(user, rawFunctionName) {
     if (!user || !user.miningSession?.isActive) return;
@@ -196,7 +173,6 @@ class MiningController {
       console.log("updateBooster called without function name");
       return;
     }
-
     const functionName = rawFunctionName.toLowerCase().replace(/[^a-z]/g, "");
     if (!validFunctions.includes(functionName)) {
       console.log(`Invalid function for boost: ${rawFunctionName}`);
@@ -205,76 +181,71 @@ class MiningController {
 
     try {
       const now = new Date();
+      const nowMs = now.getTime();
 
-      // Normalize booster shape
+      // Normalize booster structure
       const booster = user.booster
         ? user.booster.toObject
           ? user.booster.toObject()
           : { ...user.booster }
         : { functions: {} };
-      if (!booster.functions || typeof booster.functions !== "object") {
+      if (!booster.functions || typeof booster.functions !== "object")
         booster.functions = {};
-      }
 
-      // If legacy booleans present (pay: true), convert to function-window entries if we see them
+      // Convert legacy boolean entries into windows (just-activated at now)
       for (const k of Object.keys(booster.functions || {})) {
         const val = booster.functions[k];
         if (val === true) {
-          // convert to window starting now (legacy) — but keep it short: treat as just-activated now
           booster.functions[k] = {
-            startTime: now,
-            expiration: new Date(now.getTime() + BOOST_DURATION),
+            startTime: new Date(nowMs),
+            expiration: new Date(nowMs + BOOST_DURATION),
           };
-        } else if (val && typeof val === "object") {
-          // already in window form — keep
         } else if (val === false) {
-          // ignore
           delete booster.functions[k];
-        }
+        } // if object, keep as-is
       }
 
-      // If function not present or expired, set its window (Design A: do NOT extend if already active)
       const existing = booster.functions[functionName];
-      let needToSet = false;
-      if (!existing) needToSet = true;
-      else {
-        // if object shape, check expiration
-        const exp = existing.expiration
+      let shouldSetWindow = false;
+
+      if (!existing) {
+        shouldSetWindow = true;
+      } else if (existing && typeof existing === "object") {
+        const expMs = existing.expiration
           ? existing.expiration instanceof Date
             ? existing.expiration.getTime()
             : new Date(existing.expiration).getTime()
           : 0;
-        if (exp && Date.now() > exp) needToSet = true;
+        if (!expMs || Date.now() > expMs) shouldSetWindow = true;
       }
 
-      if (needToSet) {
+      if (shouldSetWindow) {
         booster.functions[functionName] = {
-          startTime: now,
-          expiration: new Date(now.getTime() + BOOST_DURATION),
+          startTime: new Date(nowMs),
+          expiration: new Date(nowMs + BOOST_DURATION),
         };
         console.log(
-          `Booster function ${functionName} activated for user ${user._id} till ${booster.functions[functionName].expiration}`
+          `Activated booster ${functionName} for user ${user._id} until ${booster.functions[functionName].expiration}`
         );
       } else {
+        // active and not expired -> do not extend (Design A)
         console.log(
-          `Booster function ${functionName} already active for user ${user._id}; not extending (Design A)`
+          `Booster ${functionName} already active for user ${user._id} (not extended).`
         );
       }
 
-      // Update rate field optionally (not necessary but handy)
-      const activeFnCount = Object.keys(booster.functions || {}).filter(
-        (fn) => {
-          const obj = booster.functions[fn];
-          if (!obj) return false;
-          const exp = obj.expiration
-            ? obj.expiration instanceof Date
-              ? obj.expiration.getTime()
-              : new Date(obj.expiration).getTime()
-            : 0;
-          return exp > Date.now();
-        }
-      ).length;
-      booster.rate = activeFnCount * BOOST_PER_FUNCTION;
+      // optional: update a convenience rate field
+      const activeCount = Object.keys(booster.functions || {}).filter((fn) => {
+        const e = booster.functions[fn];
+        if (!e || typeof e !== "object") return false;
+        const exp = e.expiration
+          ? e.expiration instanceof Date
+            ? e.expiration.getTime()
+            : new Date(e.expiration).getTime()
+          : 0;
+        return exp > Date.now();
+      }).length;
+      booster.rate = activeCount * BOOST_PER_FUNCTION;
 
       user.booster = booster;
       user.markModified("booster");
@@ -284,11 +255,7 @@ class MiningController {
     }
   }
 
-  /* --------------------------
-     GET STATUS — make accumulated and rate consistent
-     - accumulated is computed by calculateEarnings(user, now)
-     - rate is instantaneous rate (base + active boosters + active referrals)
-     -------------------------- */
+  /* ---------------- GET STATUS ---------------- */
 
   static async getMiningStatus(req, res) {
     try {
@@ -323,7 +290,7 @@ class MiningController {
         user.referrals || []
       );
 
-      // Build boosterData & current boosterRate by counting currently active function-windows
+      // compute current boosterRate by checking per-function windows
       let boosterRate = 0;
       let boosterTimeLeft = 0;
       let boosterData = { functions: [], detailed: {} };
@@ -333,11 +300,10 @@ class MiningController {
           const entry = user.booster.functions[fn];
           if (!entry) continue;
 
-          // entry may be boolean legacy or object; normalize
+          // entry can be legacy boolean or object
           let startMs = null;
           let endMs = null;
           if (entry === true) {
-            // legacy: assume active now until now + BOOST_DURATION
             startMs = nowTs;
             endMs = nowTs + BOOST_DURATION;
           } else if (entry && typeof entry === "object") {
@@ -361,24 +327,18 @@ class MiningController {
           if (startMs && endMs && nowTs >= startMs && nowTs < endMs) {
             boosterRate += BOOST_PER_FUNCTION;
             boosterData.functions.push(fn);
-            // timeLeft for the *soonest* expiring booster (helpful)
-            const timeLeft = Math.min(
-              endMs - nowTs,
-              boosterTimeLeft || Number.MAX_SAFE_INTEGER
-            );
-            boosterTimeLeft = Math.max(boosterTimeLeft, timeLeft); // keep largest left (or set)
+            // capture largest time left (useful for UI)
+            boosterTimeLeft = Math.max(boosterTimeLeft, endMs - nowTs);
           }
         }
       }
 
-      // instantaneous hourly rate (base + referral + current boosters)
       const rate = parseFloat(
         (BASE_HOURLY_RATE + REFERRAL_BONUS * activeRefs + boosterRate).toFixed(
           6
         )
       );
 
-      // accumulated: compute exact earnings from session start to now using overlap-aware function
       let accumulated = 0;
       let progress = 0;
       if (user.miningSession.isActive && user.miningSession.startTime) {
@@ -413,12 +373,7 @@ class MiningController {
     }
   }
 
-  /* --------------------------
-     EARNINGS CALC (overlap-aware)
-     - baseTotal: base rate × sessionHours
-     - boosterTotal: sum over each function's overlap (per-function window)
-     - referralTotal: per-referral overlap
-     -------------------------- */
+  /* ---------------- CALCULATE EARNINGS (overlap-aware) ---------------- */
 
   static calculateEarnings(user, asOf = Date.now()) {
     try {
@@ -441,11 +396,11 @@ class MiningController {
           const entry = user.booster.functions[fn];
           if (!entry) continue;
 
-          // support legacy boolean true/false stored in DB
+          // support boolean legacy or object windows
           let bStart = null;
           let bEnd = null;
           if (entry === true) {
-            // treat as just-activated at sessionStart or now? choose sessionStart fallback
+            // treat legacy true as "activated at sessionStart"
             bStart = sessionStart;
             bEnd = sessionStart + BOOST_DURATION;
           } else if (entry && typeof entry === "object") {
@@ -464,7 +419,6 @@ class MiningController {
           }
 
           if (!bStart || !bEnd) continue;
-
           const overlapStart = Math.max(sessionStart, bStart);
           const overlapEnd = Math.min(sessionEnd, bEnd);
           if (overlapEnd > overlapStart) {
@@ -480,7 +434,6 @@ class MiningController {
       for (const r of refs) {
         try {
           if (!r.miningSession || !r.miningSession.startTime) continue;
-
           const rStart = new Date(r.miningSession.startTime).getTime();
           let rEnd;
           if (r.miningSession.isActive) {
@@ -493,7 +446,6 @@ class MiningController {
           } else {
             rEnd = Math.min(rStart + MAX_SESSION_DURATION, asOf);
           }
-
           const overlapStart = Math.max(sessionStart, rStart);
           const overlapEnd = Math.min(sessionEnd, rEnd);
           if (overlapEnd > overlapStart) {
@@ -514,9 +466,7 @@ class MiningController {
     }
   }
 
-  /* --------------------------
-     Utility helpers
-     -------------------------- */
+  /* ---------------- UTIL ---------------- */
 
   static countActiveReferrals(refs = []) {
     const now = Date.now();
