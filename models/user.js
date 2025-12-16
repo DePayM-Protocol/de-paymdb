@@ -93,13 +93,11 @@ const userSchema = mongoose.Schema({
     default: Date.now
   },
   booster: {
-    type: {
-      functions: mongoose.Schema.Types.Mixed, // ✅ Change to Mixed type
-      expiration: Date,
-      rate: Number
-    },
-    default: null
-  },
+  functions: { type: Map, of: Boolean, default: {} }, // or plain Object
+  startTime: { type: Date, default: null },
+  expiration: { type: Date, default: null },
+  rate: { type: Number, default: 0 }
+},
   accumulated: { type: Number, default: 0 },
   cooldownEnd: Date,
   miningSession: {
