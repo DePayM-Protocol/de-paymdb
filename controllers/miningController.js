@@ -1,5 +1,8 @@
 const User = require('../models/user');
 
+console.log("🔥 NEW MINING CONTROLLER LOADED", new Date().toISOString());
+
+
 
 const BASE_HOURLY_RATE = 0.021;
 const REFERRAL_BONUS = 0.0025;
