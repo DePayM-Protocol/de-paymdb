@@ -12,6 +12,7 @@ const miningRouter = require('./routers/miningRouter');
 const relayerRouter = require('./routers/relayerRouter')
 const txRouter = require('./routers/txRouter');
 const currencyRouter = require('./routers/exchangeRateRouter');
+const stakingRouter = require('./controllers/stakingController');
 
 
 const app = express();
@@ -83,7 +84,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/mining', miningRouter);
 app.use('/api/relayer', relayerRouter);
 app.use('/api/transactions', txRouter);
-
+app.use('/api/staking', stakingRouter);
 app.use('/api/currency', currencyRouter);
 
 

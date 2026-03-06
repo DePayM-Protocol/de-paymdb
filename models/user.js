@@ -89,6 +89,18 @@ const userSchema = mongoose.Schema(
       default: 0,
     },
     balance: { type: Number, default: 0 },
+    claimedOffsets: { type: Map, of: String, default: {} },
+
+    // audit claims
+    claims: [
+      {
+        amount: Number, // decimal DPAYM
+        token: String,
+        stakingContract: String,
+        snapshot: String, // raw units at claim time
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
     totalClaimed: { type: Number, default: 0 },
     lastClaimTime: { type: Date, default: Date.now },
     ratePerHour: { type: Number, default: 0.012 },
@@ -121,7 +133,7 @@ const userSchema = mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const User = mongoose.model('User', userSchema)
