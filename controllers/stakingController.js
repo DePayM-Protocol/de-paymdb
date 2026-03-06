@@ -4,7 +4,8 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const { ethers } = require("ethers");
 const User = require("../models/user"); // adjust path to your User model
-// const auth = require('../middleware/auth'); // <-- use your real auth middleware
+const authController = require('../controllers/authController');
+const auth = require('../middlewares/auth'); // <-- use your real auth middleware
 
 // CONFIG: set in env
 // RPC URL for the chain where staking contract lives
@@ -135,7 +136,7 @@ function rawToDecimal(rawBigInt, decimals = DPAYM_DECIMALS, precision = 6) {
  * Body: { stakingAddress, tokenAddress? , rpcUrl? , tokenDecimals? }
  * Auth required: req.user.id must be set by your auth middleware
  */
-router.post("/claim-offchain", /* auth, */ async (req, res) => {
+router.post("/claim-offchain", auth,  async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const userId = req.user?.id;
