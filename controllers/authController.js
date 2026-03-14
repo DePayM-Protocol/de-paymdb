@@ -285,9 +285,7 @@ exports.addWallet = async (req, res) => {
       return res.status(400).json({ message: 'Invalid wallet address format' });
     }
 
-    const existingUser = await User.findOne({ 
-      'wallets.address': walletAddress 
-    });
+    const existingUser = await User.findOne({ 'wallets.address': walletAddress });
 
     if (existingUser && existingUser._id.toString() !== userId) {
       return res.status(409).json({ message: 'Wallet already linked to another User' });
@@ -296,22 +294,27 @@ exports.addWallet = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Check if wallet exists using proper object structure
-    const exists = user.wallets.some(w => w.address === walletAddress);
-    if (exists) return res.json({ success: true, wallets: user.wallets });
+    // Check if wallet already exists
+    if (user.wallets.some(w => w.address === walletAddress)) {
+      return res.json({ success: true, wallets: user.wallets });
+    }
 
-    // Add new wallet with proper structure
+    // Add the new wallet
     user.wallets.push({ address: walletAddress });
-    
-    // Validate before saving
+
+    // Ensure primaryWallet is set (if not already)
+    if (!user.primaryWallet && user.wallets.length > 0) {
+      user.primaryWallet = user.wallets[0].address;
+    }
+
     await user.validate();
     await user.save();
 
-    return res.json({ success: true, wallets: user.wallets });
+    return res.json({ success: true, wallets: user.wallets, primaryWallet: user.primaryWallet });
 
   } catch (error) {
     console.error("Add wallet error:", error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: "Validation failed",
       error: error.message,
       fields: error.errors ? Object.keys(error.errors) : []

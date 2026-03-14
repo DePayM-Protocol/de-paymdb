@@ -77,6 +77,7 @@ const userSchema = mongoose.Schema(
         ref: "Transaction",
       },
     ],
+    primaryWallet: { type: String, lowercase: true, default: null },
     wallets: {
       type: [walletSchema],
       default: [],
