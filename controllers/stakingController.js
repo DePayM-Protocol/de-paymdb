@@ -26,7 +26,7 @@ const STAKING_ABI_PATH = process.env.STAKING_ABI_PATH || "../contracts/staking/a
 // Default decimals for the on-chain reward token (USDC uses 6)
 const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS ?? 6);
 // optional claim cooldown (ms) — default 24 hours
-const SESSION_COOLDOWN_MS = Number(process.env.SESSION_COOLDOWN_MS ?? 24 * 60 * 60 * 1000);
+const SESSION_COOLDOWN_MS = Number(process.env.SESSION_COOLDOWN_MS ??  60 * 1000);
 
 /** Load ABI: prefer provided artifact, otherwise minimal ABI for our contract */
 function loadStakingAbi() {
