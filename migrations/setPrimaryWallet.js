@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const User = require('../models/User'); // adjust path if needed
+const User = require('../models/user'); // adjust path if needed
 
 async function migratePrimaryWallet() {
   await mongoose.connect(process.env.MONGO_URI, {
