@@ -207,14 +207,14 @@ router.post("/claim-offchain", auth, async (req, res) => {
     }
 
     // --- Cooldown check (per-user) ---
-    if (user.cooldownEnd) {
+    if (user.stakingCooldownEnd) {
       const now = Date.now();
-      const cooldownEndTs =
-        user.cooldownEnd instanceof Date
-          ? user.cooldownEnd.getTime()
-          : new Date(user.cooldownEnd).getTime();
-      if (now < cooldownEndTs) {
-        const msLeft = cooldownEndTs - now;
+      const stakingCooldownEndTs =
+        user.stakingCooldownEnd instanceof Date
+          ? user.stakingCooldownEnd.getTime()
+          : new Date(user.stakingCooldownEnd).getTime();
+      if (now < stakingCooldownEndTs) {
+        const msLeft = stakingCooldownEndTs - now;
         await session.abortTransaction();
         session.endSession();
         return res.status(429).json({
@@ -265,7 +265,7 @@ router.post("/claim-offchain", auth, async (req, res) => {
       // Update lastClaim + cooldown so UI knows user attempted a claim (and triggers cooldown)
       user.miningSession = user.miningSession || {};
       user.miningSession.lastClaim = new Date();
-      user.cooldownEnd = new Date(Date.now() + SESSION_COOLDOWN_MS);
+      user.stakingCooldownEnd = new Date(Date.now() + SESSION_COOLDOWN_MS);
 
       await user.save({ session });
       await session.commitTransaction();
@@ -298,7 +298,7 @@ router.post("/claim-offchain", auth, async (req, res) => {
     );
     user.miningSession = user.miningSession || {};
     user.miningSession.lastClaim = new Date();
-    user.cooldownEnd = new Date(Date.now() + SESSION_COOLDOWN_MS);
+    user.stakingCooldownEnd = new Date(Date.now() + SESSION_COOLDOWN_MS);
 
     // push audit record
     user.claims = user.claims || [];

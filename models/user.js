@@ -122,6 +122,7 @@ const userSchema = mongoose.Schema(
     },
     accumulated: { type: Number, default: 0 },
     cooldownEnd: Date,
+    stakingCooldownEnd: Date,
     miningSession: {
       startTime: Date,
       storageCapacity: { type: Number, default: 100 },
